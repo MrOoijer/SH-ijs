@@ -2,6 +2,7 @@
 title: "Antarctic sea ice"
 author: "Jan van Rongen"
 date: "`r Sys.Date()`"
+subtitle: "Versie 0.2"
 output:
   pdf_document:
     fig_caption: yes
@@ -20,9 +21,17 @@ header-includes:
  
 # Analyseer zee-ijs antarctica
 
-Het dillema is dat de input niet voor alle dagen data bevat. Dat kun je dan opvangen door zg. imputation, maar daar houd ik niet zo van. Dat vermindert de variantie omdat het waarden verzint die gemiddelden zijn van anderen. Mijn methode hier bestaat uit het middelen van de data over een periode van 3 dagen, dus als daar minder gegevens in zitten is de sd juist groter. 
+Het dillema is dat de data die ik uit een Japanse repository haal, als input niet voor alle dagen gegevens bevat. Dat kun je dan opvangen door zg. imputation, maar daar houd ik niet zo van. Dat vermindert de variantie omdat het waarden verzint die gemiddelden zijn van anderen. Mijn methode hier bestaat uit het middelen van de data over een periode van 3 dagen, dus als daar minder gegevens in zitten is de $\sigma$ juist groter. 
 
-Niettemin zie ik een sd van bijna 6 sigma.
+## Methode
+
+De dagtekening van de data wordt aangepast, eerst bereken ikn de dag van het jaar, dan rekken we het hele jaar op naar een schaal van 366 dagen. Vervolgens middelen we gegevens over een groepje van 2 (of 3) pseudo-dagen waardoor elk vakje tenminste één meting bevat. Dat geeft dus een tijdreeks waarin elk volledig jaar 366/2 of 366/3  gegevens bevat. 
+
+Deze tijdreeksen zijn de basis voor alle verdere analyse.
+
+## Terminologie
+
+We kijken naar de variabiliteit over de jaren en noemen die sigma ($\sigma$), maar dat is een beetje slordig omdat die eigenlijk de sigma van de onderliggende verdeling is. Maar die is natuurlijk onbekend. Dus eigenlijk schatten we die in met de standaard afwijking (sd) van de metingen. De officiële terminologie is $\hat\sigma$, de schatter van $\sigma$, maar ik noem het gewoon sigma, net als iedereen. 
 
 ```{r setup, include=F}
 knitr::opts_chunk$set(echo = F)
@@ -36,10 +45,14 @@ library(myLib, quietly = TRUE) ## for pretty_plot
 
 start.y= 1979 # skip the incomplete 1978
 P= 2 # Periode lengte voor de verfelijking. Kan 2,3 of 6 zijn
-
+span.txt<- sprintf("%d-2022", start.y)
 ```
 
 # Inlezen data en bewerken
+
+De input kan alleen gedownload worden via een formulier op de in de code geneoemde site. Voor nieuwe updates moet je de data dus handmatig toevoegen.
+
+Daarna worden de "pseudo-datums" gemaakt , er wordt nog niets gemiddeld of iets dergelijks.
 
 ```{r inlezen}
 ##Databron: "https://ads.nipr.ac.jp/vishop/#/extent"
@@ -51,8 +64,10 @@ z<- lubridate::yday(sprintf("%d-%d-%d", dat[,2], dat[,3], dat[, 4]))
 names(dat)[1]<- "yday" 
 dat$yday<- z
 dat[, 1:2] <- dat[, 2:1]
+a<- dat[, 3:4] # remember original month, day too
 dat[, 3:5]<- NULL
-names(dat) <- c("year", "yday", "value")
+dat<- cbind(dat, a)
+names(dat) <- c("year", "yday", "value", "month", "day")
 dat<- dat[ dat$year >= start.y,]
 dat$value <- dat$value / 10^6
 
@@ -63,7 +78,7 @@ dat$yday<- dat$yday*366/z
 ```
 
 Niet alle jaren zijn heleaam compleet, maar in principe is de data dagelijks vanaf 1989 en daarvoor per 2 dagen. 
-Maar het begint in 1978 met maand 11. Dat jaar laat ik weg.
+Maar het begint in 1978 met maand 11. We beginnen de analyse in `r start.y`.
 
 # Wat er aan de hand is
 
@@ -76,16 +91,16 @@ for (yr in start.y:2023){
   if (yr == 2022) kleur=1 else kleur=5
   if (yr == 2022) lwd=2 else lwd=1
   if( yr == start.y) pretty_plot(kleur=5, df, 
-        xlab= "day of the year", 
+        xlab= "day of the year",xlim=c(1, 366),
         ylab= "10^6 km^2", ylim=c( 0.5, 22), 
-        main="Anatarctic Sea Ice Extent\nHistory (1979-2022)  vs this year (2023 - blue)") else
+        main=sprintf("Anatarctic Sea Ice Extent\nHistory (%s) vs this year (2023 - blue)", span.txt)) else
     pretty_plot(kleur=kleur, lwd=lwd, df, add=TRUE)
 }
 pretty_plot(kleur=2, df, add=TRUE, lwd=2)
-pretty_legend(lwd=3, kleur=c(5,1,2), c("1979-2021", "2022", "2023"))
+pretty_legend(lwd=3, kleur=c(5,1,2), c(span.txt, "2022", "2023"))
 ```
 
-We see thet the deviation already started in 2022.
+We zien dat de afwijkingen al eind 2022 begonnen, maar ook dat heel 2022 erf laag was. 
 
 # Analyse van de mate van afwijking
 
@@ -130,7 +145,7 @@ pretty_plot(df, add=T)
 ## df$y<- 5 *df$y; pretty_plot(add=T, df, lty=2)
 df<- df[1:x,]; df$y<- factor2023* df$y ##/5
 pretty_plot(add=T, kleur=2, df, lwd=2)
-pretty_legend(kleur=1:2, lwd=3, c("sd 1979=2022", "2023"))
+pretty_legend(kleur=1:2, lwd=3, c(span.txt, "2023"))
 
 m=max(factor2023)
 x=which(factor2023 == max(factor2023))
@@ -140,4 +155,7 @@ pretty_text(x=df$x[x]+3, y=df$y[x], adj=0, font=4,
 
 Dus de waarde van 2023 op het tijstip (t) wordt vergeleken met de waarde van het gemiddelde over 1979-2022 (eveneens op tijdstip (t)). Dat verschil wordt afgebeeld in de blauwe lijn in de plot. Aan de onderkant van de grafiek staat de SD van die periode, 
 
-Niet expliciet in de grafiek, maar de max afwijking is `r round(m,2)` maal de $\sigma$. Ik gebruik de termen sd en $\sigma$ zoals velen doen door elkaar, maar natuurlijk gaat het om een schatting van de echte $\sigma$ ofwel de $\hat{\sigma}$.
+# Revisie historie
+
+    * 0.1 (2023-07) eerste lokale hack, data t.m. 07-30
+    * 0.2 (2023-07-31) opgeschoonde versie voor github
